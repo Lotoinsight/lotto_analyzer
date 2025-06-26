@@ -21,7 +21,7 @@ if len(df) > 0 and "회차" in df.columns and df["회차"].notnull().any():
     min_round = int(df["회차"].min())
     max_round = int(df["회차"].max())
     default_start = min_round
-    default_end = min(min_round + 50, max_round)
+    default_end = min(min_round + 50, max_round) if max_round - min_round >= 5 else max_round
     selected_range = st.slider("🔍 분석할 회차 범위 선택",
                                min_value=min_round,
                                max_value=max_round,
