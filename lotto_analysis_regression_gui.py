@@ -13,7 +13,11 @@ df = pd.read_csv("lotto_1977_named.csv")
 number_cols = [f'번호{i}' for i in range(1, 7)]
 
 # 회차 범위 슬라이더 안전 설정
-if len(df) > 0 and "회차" in df.columns:
+# 문자열이나 비어 있는 데이터에 대비한 숫자 변환
+if "회차" in df.columns:
+    df["회차"] = pd.to_numeric(df["회차"], errors="coerce")
+
+if len(df) > 0 and "회차" in df.columns and df["회차"].notnull().any():
     min_round = int(df["회차"].min())
     max_round = int(df["회차"].max())
     default_start = min_round
@@ -23,7 +27,7 @@ if len(df) > 0 and "회차" in df.columns:
                                max_value=max_round,
                                value=(default_start, default_end))
 else:
-    st.error("⚠️ 데이터에 '회차' 정보가 없거나 데이터가 비어 있습니다.")
+    st.error("⚠️ '회차' 컬럼이 없거나 숫자값이 부족합니다. CSV 파일을 확인해주세요.")
     st.stop()
 
 filtered_df = df[(df["회차"] >= selected_range[0]) & (df["회차"] <= selected_range[1])]
