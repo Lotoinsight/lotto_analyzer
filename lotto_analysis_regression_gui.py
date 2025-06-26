@@ -20,8 +20,14 @@ if "회차" in df.columns:
 if len(df) > 0 and "회차" in df.columns and df["회차"].notnull().any():
     min_round = int(df["회차"].min())
     max_round = int(df["회차"].max())
+
+    if max_round <= min_round:
+        st.error("⚠️ 유효한 회차 범위(min < max)가 아닙니다. CSV 파일을 확인해주세요.")
+        st.stop()
+
     default_start = min_round
     default_end = min(min_round + 50, max_round) if max_round - min_round >= 5 else max_round
+
     selected_range = st.slider("🔍 분석할 회차 범위 선택",
                                min_value=min_round,
                                max_value=max_round,
