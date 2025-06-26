@@ -12,11 +12,19 @@ st.title("🎯 로또 번호 분석기: 평균 회귀 vs. 단순 빈도")
 df = pd.read_csv("lotto_1977_named.csv")
 number_cols = [f'번호{i}' for i in range(1, 7)]
 
-# 회차 범위 슬라이더
-min_round = int(df["회차"].min())
-max_round = int(df["회차"].max())
-selected_range = st.slider("🔍 분석할 회차 범위 선택", min_value=min_round, max_value=max_round,
-                             value=(min_round, max_round))
+# 회차 범위 슬라이더 안전 설정
+if len(df) > 0 and "회차" in df.columns:
+    min_round = int(df["회차"].min())
+    max_round = int(df["회차"].max())
+    default_start = min_round
+    default_end = min(min_round + 50, max_round)
+    selected_range = st.slider("🔍 분석할 회차 범위 선택",
+                               min_value=min_round,
+                               max_value=max_round,
+                               value=(default_start, default_end))
+else:
+    st.error("⚠️ 데이터에 '회차' 정보가 없거나 데이터가 비어 있습니다.")
+    st.stop()
 
 filtered_df = df[(df["회차"] >= selected_range[0]) & (df["회차"] <= selected_range[1])]
 st.write(f"Selected rounds: **{len(filtered_df)}**")
