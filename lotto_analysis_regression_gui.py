@@ -3,17 +3,22 @@ import matplotlib.pyplot as plt
 import streamlit as st
 import plotly.graph_objects as go
 from io import StringIO
+import os
 
 # 페이지 기본 설정
 st.set_page_config(page_title="로또 분석기", layout="wide")
 st.title("🎯 로또 번호 분석기: 평균 회귀 vs. 단순 빈도")
 
 # 데이터 불러오기
-df = pd.read_csv("lotto_1977_named.csv")
+csv_path = "lotto_1977_named.csv"
+if not os.path.exists(csv_path):
+    st.error("❌ CSV 파일이 존재하지 않습니다. 경로 또는 파일명을 확인하세요.")
+    st.stop()
+
+df = pd.read_csv(csv_path)
 number_cols = [f'번호{i}' for i in range(1, 7)]
 
 # 회차 범위 슬라이더 안전 설정
-# 문자열이나 비어 있는 데이터에 대비한 숫자 변환
 if "회차" in df.columns:
     df["회차"] = pd.to_numeric(df["회차"], errors="coerce")
 
@@ -21,23 +26,27 @@ if len(df) > 0 and "회차" in df.columns and df["회차"].notnull().any():
     min_round = int(df["회차"].min())
     max_round = int(df["회차"].max())
 
-    if max_round <= min_round:
+    if max_round < min_round:
         st.error("⚠️ 유효한 회차 범위(min < max)가 아닙니다. CSV 파일을 확인해주세요.")
         st.stop()
-
-    default_start = min_round
-    default_end = min(min_round + 50, max_round) if max_round - min_round >= 5 else max_round
-
-    selected_range = st.slider("🔍 분석할 회차 범위 선택",
-                               min_value=min_round,
-                               max_value=max_round,
-                               value=(default_start, default_end))
+    elif max_round == min_round:
+        st.warning(f"⚠️ 회차가 하나만 존재합니다: {min_round}회. 전체 분석 기능이 제한될 수 있습니다.")
+        selected_range = (min_round, max_round)
+    else:
+        default_start = min_round
+        default_end = min(min_round + 50, max_round) if max_round - min_round >= 5 else max_round
+        selected_range = st.slider("🔍 분석할 회차 범위 선택",
+                                   min_value=min_round,
+                                   max_value=max_round,
+                                   value=(default_start, default_end))
 else:
     st.error("⚠️ '회차' 컬럼이 없거나 숫자값이 부족합니다. CSV 파일을 확인해주세요.")
     st.stop()
 
 filtered_df = df[(df["회차"] >= selected_range[0]) & (df["회차"] <= selected_range[1])]
 st.write(f"Selected rounds: **{len(filtered_df)}**")
+
+# 이하 기존 코드 동일... (변경 없이 유지)
 
 # 번호 추출 및 출현 횟수 계산
 numbers = filtered_df[number_cols].values.flatten()
