@@ -1,162 +1,90 @@
-import pandas as pd
-import matplotlib.pyplot as plt
+
 import streamlit as st
-import plotly.graph_objects as go
-from io import StringIO
-import os
+import pandas as pd
+import random
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 
-# 페이지 기본 설정
-st.set_page_config(page_title="로또 분석기", layout="wide")
-st.title("🎯 로또 번호 분석기: 평균 회귀 vs. 단순 빈도")
+plt.rcParams['font.family'] = 'Malgun Gothic'
+plt.rcParams['axes.unicode_minus'] = False
 
-# 데이터 불러오기
-csv_path = "lotto_1977_named.csv"
-if not os.path.exists(csv_path):
-    st.error("❌ CSV 파일이 존재하지 않습니다. 경로 또는 파일명을 확인하세요.")
-    st.stop()
+st.set_page_config(page_title="로또 당첨 분석기", layout="wide")
+st.title("🎯 로또 번호 당첨 분석기 + 자동 추천기")
 
-df = pd.read_csv(csv_path)
-number_cols = [f'번호{i}' for i in range(1, 7)]
+uploaded_file = st.file_uploader("📂 CSV 파일 업로드 (lotto_data_bonus_date.csv)", type=["csv"])
+numbers_input = st.text_input("🔢 로또 번호 6개 입력 (쉼표로 구분)", value="1, 2, 3, 4, 5, 6")
 
-# 회차 범위 슬라이더 안전 설정
-if "회차" in df.columns:
-    df["회차"] = pd.to_numeric(df["회차"], errors="coerce")
+def 추천번호():
+    return sorted(random.sample(range(1, 46), 6))
 
-if len(df) > 0 and "회차" in df.columns and df["회차"].notnull().any():
-    min_round = int(df["회차"].min())
-    max_round = int(df["회차"].max())
+if uploaded_file:
+    try:
+        df = pd.read_csv(uploaded_file)
 
-    if max_round < min_round:
-        st.error("⚠️ 유효한 회차 범위(min < max)가 아닙니다. CSV 파일을 확인해주세요.")
-        st.stop()
-    elif max_round == min_round:
-        st.warning(f"⚠️ 회차가 하나만 존재합니다: {min_round}회. 전체 분석 기능이 제한될 수 있습니다.")
-        selected_range = (min_round, max_round)
-    else:
-        default_start = min_round
-        default_end = min(min_round + 50, max_round) if max_round - min_round >= 5 else max_round
-        selected_range = st.slider("🔍 분석할 회차 범위 선택",
-                                   min_value=min_round,
-                                   max_value=max_round,
-                                   value=(default_start, default_end))
-else:
-    st.error("⚠️ '회차' 컬럼이 없거나 숫자값이 부족합니다. CSV 파일을 확인해주세요.")
-    st.stop()
+        if df.empty or 'Round' not in df.columns:
+            st.error("CSV 파일에 유효한 'Round' 컬럼이 없습니다.")
+        else:
+            last_round = int(df["Round"].max())
+            trend_range = st.slider("📈 회차 범위 선택", min_value=1, max_value=last_round, value=(last_round - 10, last_round))
 
-filtered_df = df[(df["회차"] >= selected_range[0]) & (df["회차"] <= selected_range[1])]
-st.write(f"Selected rounds: **{len(filtered_df)}**")
+            df = df[(df["Round"] >= trend_range[0]) & (df["Round"] <= trend_range[1])]
 
-# 이하 기존 코드 동일... (변경 없이 유지)
+            if numbers_input:
+                user_numbers = sorted(set(int(x.strip()) for x in numbers_input.split(",") if x.strip().isdigit()))
+                if len(user_numbers) != 6:
+                    st.warning("❗ 정확히 6개의 숫자를 입력해주세요.")
+                else:
+                    match_results = []
 
-# 번호 추출 및 출현 횟수 계산
-numbers = filtered_df[number_cols].values.flatten()
-counts = pd.Series(numbers).value_counts().sort_index()
-counts = counts.reindex(range(1, 46), fill_value=0)
+                    for _, row in df.iterrows():
+                        draw_nums = [row['N1'], row['N2'], row['N3'], row['N4'], row['N5'], row['N6']]
+                        bonus = row['Bonus']
+                        matched = len(set(user_numbers) & set(draw_nums))
+                        is_bonus_matched = bonus in user_numbers
+                        rank = None
 
-# 전체 회차 기준 정보
-full_counts = pd.Series(df[number_cols].values.flatten()).value_counts().sort_index()
-full_counts = full_counts.reindex(range(1, 46), fill_value=0)
+                        if matched == 6:
+                            rank = "🥇 1등"
+                        elif matched == 5 and is_bonus_matched:
+                            rank = "🥈 2등"
+                        elif matched == 5:
+                            rank = "🥉 3등"
+                        elif matched == 4:
+                            rank = "🏅 4등"
+                        elif matched == 3:
+                            rank = "🎖 5등"
 
-# 평균 및 회귀점수 계산
-avg_count = counts.mean()
-full_avg = full_counts.mean()
-regression_score = avg_count - counts
-reference_regression = full_avg - full_counts
-combined_score = (regression_score * 0.6) + (reference_regression * 0.4)
+                        if rank:
+                            match_results.append({
+                                "회차": row['Round'],
+                                "날짜": row['Date'],
+                                "당첨번호": draw_nums,
+                                "보너스": bonus,
+                                "입력번호": user_numbers,
+                                "일치수": matched,
+                                "등수": rank
+                            })
 
-# 번호 필터링 조건 설정
-even_odd = st.sidebar.radio("🔢 홀/짝 번호 필터", ("전체", "홀수만", "짝수만"))
-number_range = st.sidebar.selectbox("📦 번호 구간 필터", ("전체", "1~10", "11~20", "21~30", "31~40", "41~45"))
-ac_filter = st.sidebar.checkbox("🧠 AC 번호(숫자 다양성) 기준 필터 적용")
+                    if match_results:
+                        st.success(f"🎉 총 {len(match_results)}회 당첨 이력 발견!")
+                        df_match = pd.DataFrame(match_results)
+                        st.dataframe(df_match)
 
-def calculate_ac(numbers):
-    diffs = sorted(set([b - a for i, a in enumerate(numbers) for b in numbers[i+1:]]))
-    return len(diffs)
+                        st.subheader("📈 등수별 횟수 시각화")
+                        rank_counts = df_match["등수"].value_counts()
+                        fig, ax = plt.subplots(figsize=(6, 4))
+                        rank_counts.plot(kind='bar', color='skyblue', ax=ax)
+                        ax.set_ylabel("횟수")
+                        ax.set_title("등수별 당첨 횟수")
+                        st.pyplot(fig)
+                    else:
+                        st.info("😢 당첨 이력이 없습니다.")
 
-def passes_filters(nums):
-    if even_odd == "홀수만" and any(n % 2 == 0 for n in nums): return False
-    if even_odd == "짝수만" and any(n % 2 != 0 for n in nums): return False
-    if number_range != "전체":
-        start, end = map(int, number_range.split("~"))
-        if any(n < start or n > end for n in nums): return False
-    if ac_filter and calculate_ac(nums) < 4: return False
-    return True
+            st.markdown("---")
+            st.subheader("🤖 로또 자동 추천 번호")
+            추천세트 = [추천번호() for _ in range(5)]
+            for idx, r in enumerate(추천세트, 1):
+                st.markdown(f"- 추천 {idx}: `{r}`")
 
-# 분석 방식 선택
-mode = st.radio("📊 추천 방식 선택", ["통합 회귀 점수 기반 (추천)", "평균 회귀 기반", "단순 빈도 기반"])
-
-if mode == "통합 회귀 점수 기반 (추천)":
-    score = combined_score.sort_values(ascending=False)
-elif mode == "평균 회귀 기반":
-    score = regression_score.sort_values(ascending=False)
-else:
-    score = counts.sort_values(ascending=False)
-
-result_df = pd.DataFrame({
-    "번호": score.index,
-    "출현횟수": counts[score.index].values,
-    "회귀점수(선택범위)": regression_score[score.index].values,
-    "회귀점수(전체기준)": reference_regression[score.index].values,
-    "통합회귀점수(60:40)": combined_score[score.index].values
-})
-
-# 추천 번호 필터링 적용
-top_candidates = result_df["번호"].tolist()
-recommended = []
-for i in range(len(top_candidates) - 5):
-    subset = sorted(top_candidates[i:i+6])
-    if passes_filters(subset):
-        recommended = subset
-        break
-
-st.success(f"🎯 추천 번호 ({mode}): {recommended}")
-
-# 결과 테이블 출력
-st.subheader("📋 분석 결과 표")
-st.dataframe(result_df)
-
-# 추천 번호 저장
-csv_download = result_df.to_csv(index=False)
-st.download_button("💾 분석 결과 다운로드", csv_download, file_name="lotto_analysis_result.csv")
-
-# 출현 횟수 그래프
-st.subheader("📊 번호별 출현 횟수")
-fig1, ax1 = plt.subplots(figsize=(12, 4))
-counts.plot(kind='bar', color='skyblue', ax=ax1)
-plt.axhline(avg_count, color='red', linestyle='--', label='Average (Selected)')
-plt.title("Draw Frequency by Number")
-plt.xlabel("Number")
-plt.ylabel("Frequency")
-plt.legend()
-st.pyplot(fig1)
-
-# 회차 범위 슬라이더로 추세 구간 설정
-trend_range = st.slider("📈 Draw Trend Round Range", min_value=selected_range[0], max_value=selected_range[1],
-                        value=(selected_range[0], selected_range[1]))
-trend_df = filtered_df[(filtered_df["회차"] >= trend_range[0]) & (filtered_df["회차"] <= trend_range[1])]
-
-st.subheader("📈 Draw Trend by Round (Selected Numbers)")
-selected_numbers = st.multiselect("📌 Select numbers to view trend", options=list(range(1, 46)), default=recommended)
-max_window = len(trend_df)
-rolling_window = st.slider("📐 Moving average window (rounds)", min_value=1, max_value=max_window, value=min(5, max_window))
-
-trend_data = {num: [] for num in selected_numbers}
-rounds = trend_df["회차"].tolist()
-for _, row in trend_df.iterrows():
-    nums = row[number_cols].tolist()
-    for num in selected_numbers:
-        trend_data[num].append(1 if num in nums else 0)
-
-smoothed_data = {
-    num: pd.Series(values).rolling(window=rolling_window, min_periods=1).mean().tolist()
-    for num, values in trend_data.items()
-}
-
-# Plotly 그래프로 대체 (인터랙티브 수치 확인 가능)
-fig2 = go.Figure()
-for num, values in smoothed_data.items():
-    fig2.add_trace(go.Scatter(x=rounds, y=values, mode='lines', name=f"Number {num}"))
-fig2.update_layout(title=f"Number Trend (Moving Average: {rolling_window} rounds)",
-                   xaxis_title="Round", yaxis_title="Appearance Probability",
-                   xaxis=dict(autorange='reversed'))
-st.plotly_chart(fig2)
+    except Exception as e:
+        st.error(f"오류 발생: {e}")
